@@ -18,10 +18,25 @@
 //!
 //! [Drone OS]: https://www.drone-os.com/
 
+#![feature(never_type)]
 #![feature(prelude_import)]
 #![warn(missing_docs)]
 #![warn(clippy::pedantic)]
+#![allow(
+    clippy::cast_possible_truncation,
+    clippy::module_name_repetitions,
+    clippy::wildcard_imports
+)]
 #![cfg_attr(not(feature = "std"), no_std)]
+
+mod diverged;
+mod drv;
+mod master;
+
+pub use self::{
+    drv::{I2CDrv, I2CSetup},
+    master::I2CMaster,
+};
 
 #[prelude_import]
 #[allow(unused_imports)]
