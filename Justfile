@@ -28,7 +28,7 @@ doc-open: doc
 
 # Run the tests
 test:
-	drone env -- cargo test --features std
+	drone env -- cargo test --features "std drone-stm32-map/gpio"
 
 # Update README.md
 readme:
