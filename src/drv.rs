@@ -167,27 +167,34 @@ impl<
         drv
     }
 
-    /// Starts a new master session in transmitter mode.
-    pub fn master_write<'a: 'b, 'b>(
-        &'a mut self,
-        addr: u8,
-        buf_tx: &'b [u8],
-    ) -> impl Future<Output = I2CMaster<'a, I2C, I2CEv, I2CEr, DmaTx, DmaTxInt, DmaRx, DmaRxInt>> + 'b
-    {
-        I2CMaster::new(self).send_write(addr, buf_tx, false)
+    /// Creates a new master session.
+    ///
+    /// The returned session object takes ownership of `buf`, which is returned
+    /// by [`I2CMaster::stop`] method. If the `stop` method is not called, `buf`
+    /// will be leaked.
+    pub fn master(
+        &mut self,
+        buf: Box<[u8]>,
+    ) -> I2CMaster<'_, I2C, I2CEv, I2CEr, DmaTx, DmaTxInt, DmaRx, DmaRxInt> {
+        while self.i2c.i2c_cr1.stop().read_bit() {} // stop generation
+        I2CMaster::new(self, buf)
     }
 
-    /// Starts a new master session in receiver mode.
-    pub fn master_read<'a: 'b, 'b>(
-        &'a mut self,
-        addr: u8,
-        buf_rx: &'b mut [u8],
-    ) -> impl Future<Output = I2CMaster<'a, I2C, I2CEv, I2CEr, DmaTx, DmaTxInt, DmaRx, DmaRxInt>> + 'b
-    {
-        I2CMaster::new(self).send_read(addr, buf_rx, false)
+    pub(crate) unsafe fn write(&mut self, addr: u8, buf_tx: &[u8]) -> impl Future<Output = ()> {
+        self.dma_tx(buf_tx);
+        self.start(addr << 1, false)
     }
 
-    pub(crate) fn dma_tx(&mut self, buf_tx: &[u8]) {
+    pub(crate) unsafe fn read(&mut self, addr: u8, buf_rx: &mut [u8]) -> impl Future<Output = ()> {
+        let dma_rx = self.dma_rx(buf_rx);
+        self.start(addr << 1 | 1, buf_rx.len() > 1).then(|()| dma_rx)
+    }
+
+    pub(crate) fn stop(&mut self) {
+        self.i2c.i2c_cr1.stop().set_bit(); // stop generation
+    }
+
+    unsafe fn dma_tx(&mut self, buf_tx: &[u8]) {
         self.dma_tx.dma_cm0ar.store_reg(|r, v| {
             r.m0a().write(v, buf_tx.as_ptr() as u32); // memory address
         });
@@ -198,7 +205,7 @@ impl<
         self.dma_tx.dma_ccr.modify_reg(|r, v| r.en().set(v)); // stream enable
     }
 
-    pub(crate) fn dma_rx(&mut self, buf_rx: &mut [u8]) -> impl Future<Output = ()> {
+    unsafe fn dma_rx(&mut self, buf_rx: &mut [u8]) -> impl Future<Output = ()> {
         let dma_ifcr_ctcif = self.dma_rx.dma_ifcr_ctcif;
         let dma_isr_dmeif = self.dma_rx.dma_isr_dmeif;
         let dma_isr_feif = self.dma_rx.dma_isr_feif;
@@ -225,12 +232,7 @@ impl<
         future
     }
 
-    pub(crate) fn start(
-        &mut self,
-        addr: u8,
-        repeated: bool,
-        ack: bool,
-    ) -> impl Future<Output = ()> {
+    fn start(&mut self, addr: u8, ack: bool) -> impl Future<Output = ()> {
         let i2c_cr1 = self.i2c.i2c_cr1;
         let i2c_cr2 = self.i2c.i2c_cr2;
         let i2c_sr1 = self.i2c.i2c_sr1;
@@ -246,6 +248,7 @@ impl<
                 r.start().set(v); // start generation
             });
         };
+        let repeated = self.i2c.i2c_sr2.msl().read_bit();
         let future = self.i2c_ev.add_future(fib::new_fn(move || {
             let sr1_val = i2c_sr1.load_val();
             if i2c_sr1.sb().read(&sr1_val) {
@@ -279,14 +282,6 @@ impl<
             set_start();
         }
         future
-    }
-
-    pub(crate) fn stop(&mut self) {
-        self.i2c.i2c_cr1.stop().set_bit(); // stop generation
-    }
-
-    pub(crate) fn wait_unfinished_stop(&mut self) {
-        while self.i2c.i2c_cr1.stop().read_bit() {} // stop generation
     }
 
     fn init_i2c(&mut self, i2c_freq: u32, i2c_presc: u32, i2c_trise: u32, i2c_mode: I2CMode) {

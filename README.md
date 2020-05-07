@@ -13,6 +13,8 @@ crate.
 
 * Errors from peripherals are handled via panicking.
 
+* Only master role is implemented.
+
 ## Usage
 
 Add the crate to your `Cargo.toml` dependencies:
@@ -32,7 +34,6 @@ std = ["smartoris-i2c/std"]
 Example of initializing the driver for I2C1, DMA1 CH5/CH6, and B6/B7 pins:
 
 ```rust
-
 mod thr {
     pub use drone_cortexm::thr::init;
     pub use drone_stm32_map::thr::*;
@@ -133,19 +134,15 @@ fn handler(reg: Regs, thr_init: ThrsInit) {
 Example of usage:
 
 ```rust
-let mut buf = [0; 1];
-
-// Generate a Start signal, initiate write transaction for `0x39` slave
-// address, and transmit `0x92` byte.
-i2c1.master_write(0x39, &[0x92])
+let buf = vec![0x92, 0, 0, 0].into_boxed_slice();
+let buf = i2c1
+    .master(buf) // create a master session backing by the given buffer
+    .write(0x39, ..1) // write the first byte from the buffer to address `0x39`
     .await
-    // Generate Repeated Start signal without releasing the bus, initiate
-    // read transaction for `0x39` slave address, and receive 1 byte.
-    .read(0x39, &mut buf)
-    .await;
-// The master session is dropped here, automatically sending a Stop signal.
-
-println!("{:02X}", buf[0]);
+    .read(0x39, ..) // read 4 bytes into the buffer from address `0x39`
+    .await
+    .stop(); // release the bus and get the buffer back
+println!("{:?}", buf);
 ```
 
 ## References
