@@ -25,22 +25,82 @@ pub struct I2CSetup<
     pub i2c_ev: I2CEv,
     /// I²C error interrupt.
     pub i2c_er: I2CEr,
+    /// I²C peripheral clock frequency.
+    ///
+    /// The value should be set with the APB bus frequency this I2C peripheral
+    /// connected to in MHz.
+    ///
+    /// This will be written to I2C_CR2.FREQ field. See the reference manual for
+    /// details.
+    pub i2c_freq: u32,
+    /// I²C clock prescaler.
+    ///
+    /// SCL clock = [`i2c_freq`](I2CSetup::i2c_freq) × 1_000_000 ÷
+    /// [`i2c_presc`](I2CSetup::i2c_presc) ÷ `mode`
+    ///
+    /// Where `mode` is the sum of divisor and denominator of
+    /// t<sub>low</sub>/t<sub>high</sub> ratio selected by
+    /// [`i2c_mode`](I2CSetup::i2c_mode).
+    ///
+    /// This will be written to I2C_CCR.CCR field. See the reference manual for
+    /// details.
+    pub i2c_presc: u32,
+    /// I²C maximum rise time.
+    ///
+    /// Calculated as follows: floor[[`i2c_freq`](I2CSetup::i2c_freq) ×
+    /// 1_000_000 × t<sub>r</sub>] + 1
+    ///
+    /// Where t<sub>r</sub> is the maximum rise time of both SDA and SCL signals
+    /// in seconds. Reference values: 1000 ns for Standard-mode, 300 ns for
+    /// Fast-mode.
+    ///
+    /// This will be written to I2C_TRISE.TRISE field. See the reference manual
+    /// for details.
+    pub i2c_trise: u32,
+    /// I²C bus mode.
+    ///
+    /// This will be written to I2C_CCR.F/S and I2C_CCR.DUTY fields. See the
+    /// reference manual for details.
+    pub i2c_mode: I2CMode,
     /// DMA Tx channel peripheral.
     pub dma_tx: DmaChPeriph<DmaTx>,
     /// DMA Tx channel interrupt.
     pub dma_tx_int: DmaTxInt,
     /// DMA Tx channel number.
+    ///
+    /// This will be written to DMA_SxCR.CHSEL field. See the reference manual
+    /// for details.
     pub dma_tx_ch: u32,
     /// DMA Tx channel priority level.
+    ///
+    /// This will be written to DMA_SxCR.PL field. See the reference manual for
+    /// details.
     pub dma_tx_pl: u32,
     /// DMA Rx channel peripheral.
     pub dma_rx: DmaChPeriph<DmaRx>,
     /// DMA Rx channel interrupt.
     pub dma_rx_int: DmaRxInt,
     /// DMA Rx channel number.
+    ///
+    /// This will be written to DMA_SxCR.CHSEL field. See the reference manual
+    /// for details.
     pub dma_rx_ch: u32,
     /// DMA Rx channel priority level.
+    ///
+    /// This will be written to DMA_SxCR.PL field. See the reference manual for
+    /// details.
     pub dma_rx_pl: u32,
+}
+
+/// I²C bus mode.
+#[derive(Clone, Copy)]
+pub enum I2CMode {
+    /// Standard-mode with t<sub>low</sub>/t<sub>high</sub> = 1 duty cycle.
+    Sm1,
+    /// Fast-mode with t<sub>low</sub>/t<sub>high</sub> = 2 duty cycle.
+    Fm2,
+    /// Fast-mode with t<sub>low</sub>/t<sub>high</sub> = 16/9 duty cycle.
+    Fm169,
 }
 
 /// I²C driver.
@@ -79,6 +139,10 @@ impl<
             i2c,
             i2c_ev,
             i2c_er,
+            i2c_freq,
+            i2c_presc,
+            i2c_trise,
+            i2c_mode,
             dma_tx,
             dma_tx_int,
             dma_tx_ch,
@@ -97,7 +161,7 @@ impl<
             dma_rx: dma_rx.into(),
             dma_rx_int,
         };
-        drv.init_i2c();
+        drv.init_i2c(i2c_freq, i2c_presc, i2c_trise, i2c_mode);
         drv.init_dma_tx(dma_tx_ch, dma_tx_pl);
         drv.init_dma_rx(dma_rx_ch, dma_rx_pl);
         drv
@@ -225,21 +289,32 @@ impl<
         while self.i2c.i2c_cr1.stop().read_bit() {} // stop generation
     }
 
-    fn init_i2c(&mut self) {
+    fn init_i2c(&mut self, i2c_freq: u32, i2c_presc: u32, i2c_trise: u32, i2c_mode: I2CMode) {
         self.i2c.rcc_busenr_i2cen.set_bit(); // I2C clock enable
         self.i2c.i2c_cr2.store_reg(|r, v| {
             r.last().set(v); // next DMA EOT is the last transfer
             r.dmaen().set(v); // DMA requests enable
             r.iterren().set(v); // error interrupt enable
-            r.freq().write(v, 0b10_1010); // peripheral clock frequency 42 MHz
+            r.freq().write(v, i2c_freq); // peripheral clock frequency
         });
         self.i2c.i2c_ccr.store_reg(|r, v| {
-            r.f_s().set(v); // Fm mode I2C
-            r.duty().clear(v); // Fm mode t_low/t_high = 2
-            r.ccr().write(v, 35); // SCL clock in master mode - 400 kHz
+            match i2c_mode {
+                I2CMode::Sm1 => {
+                    r.f_s().clear(v); // Sm mode I2C
+                }
+                I2CMode::Fm2 => {
+                    r.f_s().set(v); // Fm mode I2C
+                    r.duty().clear(v); // Fm mode t_low/t_high = 2
+                }
+                I2CMode::Fm169 => {
+                    r.f_s().set(v); // Fm mode I2C
+                    r.duty().set(v); // Fm mode t_low/t_high = 16/9
+                }
+            }
+            r.ccr().write(v, i2c_presc); // SCL clock in master mode
         });
         self.i2c.i2c_trise.store_reg(|r, v| {
-            r.trise().write(v, 13); // maximum rise time in Fm/Sm mode - 285.7 ns
+            r.trise().write(v, i2c_trise); // maximum rise time in Fm/Sm mode
         });
         self.i2c.i2c_cr1.store_reg(|r, v| r.pe().set(v)); // peripheral enable
         let i2c_sr1 = self.i2c.i2c_sr1;

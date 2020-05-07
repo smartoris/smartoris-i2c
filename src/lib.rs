@@ -74,7 +74,7 @@
 //!     gpio::periph_gpio_b,
 //!     i2c::periph_i2c1,
 //! };
-//! use smartoris_i2c::{I2CDrv, I2CSetup};
+//! use smartoris_i2c::{I2CDrv, I2CMode, I2CSetup};
 //!
 //! fn handler(reg: Regs, thr_init: ThrsInit) {
 //!     let thr = thr::init(thr_init);
@@ -117,6 +117,10 @@
 //!         i2c: periph_i2c1!(reg),
 //!         i2c_ev: thr.i2c1_ev,
 //!         i2c_er: thr.i2c1_er,
+//!         i2c_freq: 42,           // APB1 clock = 42 MHz
+//!         i2c_presc: 35,          // SCL clock = 400 kHz
+//!         i2c_trise: 13,          // 285.7 ns
+//!         i2c_mode: I2CMode::Fm2, // Fm mode t_low/t_high = 2
 //!         dma_tx: periph_dma1_ch6!(reg),
 //!         dma_tx_int: thr.dma1_ch6,
 //!         dma_tx_ch: 1,    // I2C1_TX
@@ -187,6 +191,11 @@
 //! # fn main() {}
 //! ```
 //!
+//! # References
+//!
+//! * [I²C-bus Specification, Version 6.0, 4th of April
+//! 2014](https://www.nxp.com/docs/en/user-guide/UM10204.pdf)
+//!
 //! [Drone OS]: https://www.drone-os.com/
 
 #![feature(never_type)]
@@ -205,7 +214,7 @@ mod drv;
 mod master;
 
 pub use self::{
-    drv::{I2CDrv, I2CSetup},
+    drv::{I2CDrv, I2CMode, I2CSetup},
     master::I2CMaster,
 };
 
