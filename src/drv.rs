@@ -172,9 +172,10 @@ impl<
     /// This method can block if previous Stop signal generation is not
     /// finished.
     ///
-    /// The returned session object takes ownership of `buf`, which is returned
-    /// by [`I2CMaster::stop`] method. If the `stop` method is not called, `buf`
-    /// will be leaked.
+    /// The returned session object takes ownership of `buf`, which can be later
+    /// returned by [`I2CMaster::stop`] method. If the `stop` method is not
+    /// called, `buf` is leaked.
+    #[inline]
     pub fn master(
         &mut self,
         buf: Box<[u8]>,

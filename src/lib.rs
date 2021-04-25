@@ -1,14 +1,13 @@
 //! I²C [Drone OS] driver for STM32F4 micro-controllers.
 //!
-//! # Restrictions
+//! # Limitations
 //!
-//! * Transmission and reception works only through DMA channels and
-//! interrupts. Interrupt only and polling methods are not in the scope of this
-//! crate.
+//! * Transmission and reception works only through DMA channels with
+//! interrupts. Polling and interrupt only methods are not supported.
 //!
 //! * Errors from peripherals are handled via panicking.
 //!
-//! * Only master role is implemented.
+//! * Only the master role is implemented.
 //!
 //! # Usage
 //!
@@ -29,13 +28,15 @@
 //! Example of initializing the driver for I2C1, DMA1 CH5/CH6, and B6/B7 pins:
 //!
 //! ```no_run
-//! # #![feature(const_fn)]
+//! # #![feature(const_fn_fn_ptr_basics)]
 //! # use drone_stm32_map::stm32_reg_tokens;
 //! # use drone_core::token::Token;
 //! # stm32_reg_tokens! {
-//! #     struct Regs;
-//! #     !scb_ccr;
-//! #     !mpu_type; !mpu_ctrl; !mpu_rnr; !mpu_rbar; !mpu_rasr;
+//! #     index => Regs;
+//! #     exclude => {
+//! #         scb_ccr,
+//! #         mpu_type, mpu_ctrl, mpu_rnr, mpu_rbar, mpu_rasr,
+//! #     }
 //! # }
 //! mod thr {
 //!     pub use drone_cortexm::thr::init;
@@ -43,28 +44,25 @@
 //!
 //!     use drone_cortexm::thr;
 //!
-//!     thr::vtable! {
-//!         use Thr;
-//!         pub struct Vtable;
-//!         pub struct Handlers;
-//!         pub struct Thrs;
-//!         pub struct ThrsInit;
-//!         static THREADS;
+//!     thr::nvic! {
+//!         thread => pub Thr {};
+//!         local => pub ThrLocal {};
+//!         vtable => pub Vtable;
+//!         index => pub Thrs;
+//!         init => pub ThrsInit;
 //!
-//!         /// DMA1 Stream5 global interrupt.
-//!         pub 16: DMA1_CH5;
-//!         /// DMA1 Stream6 global interrupt.
-//!         pub 17: DMA1_CH6;
-//!         /// I²C1 event interrupt.
-//!         pub 31: I2C1_EV;
-//!         /// I²C1 error interrupt.
-//!         pub 32: I2C1_ER;
-//!     }
-//!
-//!     thr! {
-//!         use THREADS;
-//!         pub struct Thr {}
-//!         pub struct ThrLocal {}
+//!         threads => {
+//!             interrupts => {
+//!                 /// DMA1 Stream5 global interrupt.
+//!                 16: pub dma1_ch5;
+//!                 /// DMA1 Stream6 global interrupt.
+//!                 17: pub dma1_ch6;
+//!                 /// I²C1 event interrupt.
+//!                 31: pub i2c1_ev;
+//!                 /// I²C1 error interrupt.
+//!                 32: pub i2c1_er;
+//!             };
+//!         };
 //!     }
 //! }
 //!
@@ -140,29 +138,27 @@
 //! Example of usage:
 //!
 //! ```no_run
-//! # #![feature(const_fn)]
+//! # #![feature(const_fn_fn_ptr_basics)]
 //! # use drone_stm32_map::periph::{
 //! #     dma::ch::{Dma1Ch5, Dma1Ch6},
 //! #     i2c::I2C1,
 //! # };
 //! # mod thr {
 //! #     use drone_stm32_map::thr::*;
-//! #     drone_cortexm::thr::vtable! {
-//! #         use Thr;
-//! #         pub struct Vtable;
-//! #         pub struct Handlers;
-//! #         pub struct Thrs;
-//! #         pub struct ThrsInit;
-//! #         static THREADS;
-//! #         pub 16: DMA1_CH5;
-//! #         pub 17: DMA1_CH6;
-//! #         pub 31: I2C1_EV;
-//! #         pub 32: I2C1_ER;
-//! #     }
-//! #     drone_cortexm::thr! {
-//! #         use THREADS;
-//! #         pub struct Thr {}
-//! #         pub struct ThrLocal {}
+//! #     drone_cortexm::thr::nvic! {
+//! #         thread => pub Thr {};
+//! #         local => pub ThrLocal {};
+//! #         vtable => pub Vtable;
+//! #         index => pub Thrs;
+//! #         init => pub ThrsInit;
+//! #         threads => {
+//! #             interrupts => {
+//! #                 16: pub dma1_ch5;
+//! #                 17: pub dma1_ch6;
+//! #                 31: pub i2c1_ev;
+//! #                 32: pub i2c1_er;
+//! #             };
+//! #         };
 //! #     }
 //! # }
 //! # async fn handler() {
@@ -177,7 +173,7 @@
 //! # > = unsafe { core::mem::MaybeUninit::uninit().assume_init() };
 //! let buf = vec![0x92, 0, 0, 0].into_boxed_slice();
 //! let buf = i2c1
-//!     .master(buf) // create a master session backing by the given buffer
+//!     .master(buf) // create a master session backed by the given buffer
 //!     .write(0x39, ..1) // write the first byte from the buffer to address `0x39`
 //!     .await
 //!     .read(0x39, ..) // read 4 bytes into the buffer from address `0x39`
@@ -202,6 +198,7 @@
 #![allow(
     clippy::cast_possible_truncation,
     clippy::module_name_repetitions,
+    clippy::similar_names,
     clippy::wildcard_imports
 )]
 #![cfg_attr(not(feature = "std"), no_std)]

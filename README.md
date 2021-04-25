@@ -5,15 +5,14 @@
 
 I²C [Drone OS] driver for STM32F4 micro-controllers.
 
-## Restrictions
+## Limitations
 
-* Transmission and reception works only through DMA channels and
-interrupts. Interrupt only and polling methods are not in the scope of this
-crate.
+* Transmission and reception works only through DMA channels with
+interrupts. Polling and interrupt only methods are not supported.
 
 * Errors from peripherals are handled via panicking.
 
-* Only master role is implemented.
+* Only the master role is implemented.
 
 ## Usage
 
@@ -40,28 +39,25 @@ mod thr {
 
     use drone_cortexm::thr;
 
-    thr::vtable! {
-        use Thr;
-        pub struct Vtable;
-        pub struct Handlers;
-        pub struct Thrs;
-        pub struct ThrsInit;
-        static THREADS;
+    thr::nvic! {
+        thread => pub Thr {};
+        local => pub ThrLocal {};
+        vtable => pub Vtable;
+        index => pub Thrs;
+        init => pub ThrsInit;
 
-        /// DMA1 Stream5 global interrupt.
-        pub 16: DMA1_CH5;
-        /// DMA1 Stream6 global interrupt.
-        pub 17: DMA1_CH6;
-        /// I²C1 event interrupt.
-        pub 31: I2C1_EV;
-        /// I²C1 error interrupt.
-        pub 32: I2C1_ER;
-    }
-
-    thr! {
-        use THREADS;
-        pub struct Thr {}
-        pub struct ThrLocal {}
+        threads => {
+            interrupts => {
+                /// DMA1 Stream5 global interrupt.
+                16: pub dma1_ch5;
+                /// DMA1 Stream6 global interrupt.
+                17: pub dma1_ch6;
+                /// I²C1 event interrupt.
+                31: pub i2c1_ev;
+                /// I²C1 error interrupt.
+                32: pub i2c1_er;
+            };
+        };
     }
 }
 
@@ -136,7 +132,7 @@ Example of usage:
 ```rust
 let buf = vec![0x92, 0, 0, 0].into_boxed_slice();
 let buf = i2c1
-    .master(buf) // create a master session backing by the given buffer
+    .master(buf) // create a master session backed by the given buffer
     .write(0x39, ..1) // write the first byte from the buffer to address `0x39`
     .await
     .read(0x39, ..) // read 4 bytes into the buffer from address `0x39`

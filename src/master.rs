@@ -40,7 +40,8 @@ impl<
         Self { drv, buf: ManuallyDrop::new(buf) }
     }
 
-    /// Sends a Start signal and writes data from a slice of the session buffer.
+    /// Sends the Start signal for the address `addr`, and writes the data from
+    /// the session buffer slice of the range `index` to the slave.
     pub async fn write<I: SliceIndex<[u8], Output = [u8]>>(
         self,
         addr: u8,
@@ -50,7 +51,8 @@ impl<
         self
     }
 
-    /// Sends a Start signal and reads data into a slice of the session buffer.
+    /// Sends the Start signal for the address `addr`, and reads the data from
+    /// the slave into the session buffer slice of the range `index`.
     pub async fn read<I: SliceIndex<[u8], Output = [u8]>>(
         mut self,
         addr: u8,
@@ -61,18 +63,20 @@ impl<
     }
 
     /// Returns a reference to the session buffer.
+    #[inline]
     #[must_use]
     pub fn buf(&self) -> &[u8] {
         &self.buf
     }
 
     /// Returns a mutable reference to the session buffer.
+    #[inline]
     #[must_use]
     pub fn buf_mut(&mut self) -> &mut Box<[u8]> {
         &mut self.buf
     }
 
-    /// Sends a Stop signal and returns the session buffer.
+    /// Sends the Stop signal and returns the session buffer.
     #[must_use]
     pub fn stop(self) -> Box<[u8]> {
         let Self { drv, buf } = self;
